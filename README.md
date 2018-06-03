@@ -1,0 +1,2 @@
+# mandelbrot
+fractal de mandelbrot
