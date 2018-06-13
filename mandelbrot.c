@@ -7,10 +7,11 @@
 #define WINDOW_SIZE 640
 #define NUM_BLOCKS_PER_LINE 4
 
-pthread_t thread_cons[NUM_THREADS];
+pthread_t thread_cons;
 pthread_t thread_prod[NUM_THREADS];
 
 pthread_mutex_t buffer_mutex;
+pthread_cond_t vc;
 
 void *consumer(void *arg);
 
@@ -36,10 +37,6 @@ int main(int argc, char **argv) {
 	int window_width = WINDOW_SIZE, window_height = WINDOW_SIZE;
 	int block_size = WINDOW_SIZE / (NUM_THREADS / NUM_BLOCKS_PER_LINE);
 	
-	for(i = 0; i < NUM_THREADS; i++) {
-		pthread_create(&(thread_cons[i]), NULL, consumer, NULL);
-	}
-	
 	int offset_x, offset_y = 0;
 
 	for(i = 0; i < NUM_THREADS; i++) {
@@ -58,15 +55,15 @@ int main(int argc, char **argv) {
 
 		pthread_create(&(thread_prod[i]), NULL, producer, &(regions[i]));
 	}
-	
-	for(i = 0; i < NUM_THREADS; i++) {
-		pthread_join(thread_cons[i], NULL);
-	}
+
+	pthread_create(&thread_cons, NULL, consumer, NULL);
 	
 	for(i = 0 ; i < NUM_THREADS; i++) {
 		pthread_join(thread_prod[i], NULL);
 	}
 	
+	pthread_join(thread_cons, NULL);
+
 	return 0;
 }
 
@@ -75,8 +72,8 @@ void *producer(void *arg) {
 	int iYmax = region->final_y;
 	int iXmax = region->final_x;
 	double Cx,Cy;
-	double PixelWidth=(CxMax-CxMin)/iXmax;
-    double PixelHeight=(CyMax-CyMin)/iYmax;
+	double PixelWidth=(CxMax - CxMin)/iXmax;
+    double PixelHeight=(CyMax - CyMin)/iYmax;
 
 	double Zx, Zy;
 	double Zx2, Zy2;
@@ -87,12 +84,12 @@ void *producer(void *arg) {
 	int iX,iY;
 	int color;
 
-	for(iY = 0; iY < iYmax;iY++)
+	for(iY = region->initial_y; iY < iYmax;iY++)
 	{
 		Cy = CyMin + iY * PixelHeight;
 		if (fabs(Cy) < PixelHeight/2)
 			Cy=0.0;
-		for (iX = 0;iX < iXmax; iX++)
+		for (iX = region->initial_x;iX < iXmax; iX++)
 		{         
 				Cx= CxMin + iX * PixelWidth;
 				
@@ -120,15 +117,23 @@ void *producer(void *arg) {
 
 				pthread_mutex_lock(&buffer_mutex);
 				struct work_param work;
-				work.x = Cx;
-				work.y = Cy;
+				work.x = iX;
+				work.y = iY;
 				work.color = color;
 				push_work(work);
+				pthread_cond_signal(&vc);
 				pthread_mutex_unlock(&buffer_mutex);
 		}
 	}
 }
 
 void *consumer(void *arg) {
-	
+	while (1) {
+		pthread_mutex_lock(&buffer_mutex);
+		if (top == NULL) {
+			pthread_cond_wait(&vc, &buffer_mutex);
+		}
+		struct work_param result = pop_work();
+		pthread_mutex_unlock(&buffer_mutex);
+	}
 }
