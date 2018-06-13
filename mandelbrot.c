@@ -6,7 +6,7 @@
 #include <math.h>
 #include "workstash.h"
 #define NUM_THREADS 16
-#define WINDOW_SIZE 640
+#define WINDOW_SIZE 860
 #define NUM_BLOCKS_PER_LINE 4
 
 pthread_t thread_cons;
@@ -71,8 +71,8 @@ int main(int argc, char **argv) {
 
 void *producer(void *arg) {
 	region_param_arg region = (region_param_arg)arg;
-	int iYmax = region->final_y;
-	int iXmax = region->final_x;
+	int iYmax = WINDOW_SIZE;
+	int iXmax = WINDOW_SIZE;
 	double Cx,Cy;
 	double PixelWidth=(CxMax - CxMin)/iXmax;
 	double PixelHeight=(CyMax - CyMin)/iYmax;
@@ -114,7 +114,7 @@ void *producer(void *arg) {
 				}
 				else 
 				{
-					color = 255;
+					color = Iteration;
 				};
 
 				pthread_mutex_lock(&buffer_mutex);
@@ -156,6 +156,14 @@ void *consumer(void *arg) {
     /* map (show) the window */
     XMapWindow(display, window);
 
+	XColor xcolour;
+	Colormap cmap = DefaultColormap(display, s);
+
+	// I guess XParseColor will work here
+	xcolour.red = 32000; xcolour.green = 0; xcolour.blue = 0;
+	xcolour.flags = DoRed | DoGreen | DoBlue;
+	XAllocColor(display, cmap, &xcolour);
+
 	while (1) {
 		pthread_mutex_lock(&buffer_mutex);
 		if (top == NULL) {
@@ -163,10 +171,10 @@ void *consumer(void *arg) {
 		}
 		struct work_param result = pop_work();
         
-		if (result.color == 255) {
-			XSetForeground(display, DefaultGC(display, s), WhitePixel(display, s));	
+		if (result.color != 255) {
+			XSetForeground(display, DefaultGC(display, s), xcolour.pixel * result.color);	
 		} else {
-			XSetForeground(display, DefaultGC(display, s), BlackPixel(display, s));	
+			XSetForeground(display, DefaultGC(display, s), WhitePixel(display, s));	
 		}
         XFillRectangle(display, window, DefaultGC(display, s), result.x, result.y, 1, 1);
 
