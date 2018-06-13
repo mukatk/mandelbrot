@@ -1,5 +1,7 @@
-#include <stdlib.h>
+#include <X11/Xlib.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <pthread.h>
 #include <math.h>
 #include "workstash.h"
@@ -73,7 +75,7 @@ void *producer(void *arg) {
 	int iXmax = region->final_x;
 	double Cx,Cy;
 	double PixelWidth=(CxMax - CxMin)/iXmax;
-    double PixelHeight=(CyMax - CyMin)/iYmax;
+	double PixelHeight=(CyMax - CyMin)/iYmax;
 
 	double Zx, Zy;
 	double Zx2, Zy2;
@@ -128,12 +130,53 @@ void *producer(void *arg) {
 }
 
 void *consumer(void *arg) {
+	Display *display;
+    Window window;
+    XEvent event;
+    int count = 0;
+    int s;
+ 
+    /* open connection with the server */
+    display = XOpenDisplay(NULL);
+    if (display == NULL)
+    {
+        fprintf(stderr, "Cannot open display\n");
+        exit(1);
+    }
+ 
+    s = DefaultScreen(display);
+ 
+    /* create window */
+    window = XCreateSimpleWindow(display, RootWindow(display, s), 10, 10, WINDOW_SIZE, WINDOW_SIZE, 1,
+                           BlackPixel(display, s), WhitePixel(display, s));
+ 
+    /* select kind of events we are interested in */
+    XSelectInput(display, window, ExposureMask | KeyPressMask);
+ 
+    /* map (show) the window */
+    XMapWindow(display, window);
+
 	while (1) {
 		pthread_mutex_lock(&buffer_mutex);
 		if (top == NULL) {
 			pthread_cond_wait(&vc, &buffer_mutex);
 		}
 		struct work_param result = pop_work();
+        
+		if (result.color == 255) {
+			XSetForeground(display, DefaultGC(display, s), WhitePixel(display, s));	
+		} else {
+			XSetForeground(display, DefaultGC(display, s), BlackPixel(display, s));	
+		}
+        XFillRectangle(display, window, DefaultGC(display, s), result.x, result.y, 1, 1);
+
+        /* exit on key press */
+        if (event.type == KeyPress)
+            break;
+
 		pthread_mutex_unlock(&buffer_mutex);
 	}
+ 
+    /* close connection to server */
+    XCloseDisplay(display);
 }
